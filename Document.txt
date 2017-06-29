@@ -1,0 +1,72 @@
+
+Configuring the server:
+ServerBootstrap b = new ServerBootstrap();
+b.group(acceptorGroup, handlerGroup)
+        .channel(NioServerSocketChannel.class)
+        .childHandler(new MySocketInitialiser())
+        .option(ChannelOption.SO_BACKLOG, 5)
+        .childOption(ChannelOption.SO_KEEPALIVE, true);
+
+b.localAddress(port).bind().sync();
+LOG.info("Started on port {}", port);
+
+Setting up a pipeline:
+public class JsonDecoder<T> extends MessageToMessageDecoder<String, T> {
+/**
+ * Performs the initial set up of sockets as they connect to Netty.
+ * Registers the pipeline of handlers that received messages are passed through
+ */
+public class MySocketInitialiser extends ChannelInitializer<SocketChannel> {
+
+    @Override
+    public void initChannel(SocketChannel ch) throws Exception {
+        ChannelPipeline pipeline = ch.pipeline();
+
+        pipeline.addLast(LineBasedFrameDecoder.class.getName(),
+                new LineBasedFrameDecoder(256));
+
+        pipeline.addLast(StringDecoder.class.getName(),
+                new StringDecoder(CharsetUtil.UTF_8));
+
+        pipeline.addLast(JsonDecoder.class.getName(),
+                new JsonDecoder<>(Person.class));
+
+        pipeline.addLast("stdoutHandler",
+                new ChannelInboundMessageHandlerAdapter<Person>() {
+                    @Override
+                    public void messageReceived(ChannelHandlerContext ctx, Person person) throws Exception {
+                        System.out.println(
+                                "Your name is " + person.getFirstName() + " " + person.getLastName() + "!"
+                        );
+                    }
+                }
+        );
+}
+
+JsonDecoder:
+    private static final Gson GSON = new GsonBuilder().create();
+
+    private final Class<T> clazz;
+
+    public JsonDecoder(Class<T> clazz, Class<?>... acceptedMsgTypes) {
+        super(acceptedMsgTypes);
+        this.clazz = checkNotNull(clazz);
+    }
+
+    @Override
+    public T decode(ChannelHandlerContext ctx, String msg) throws Exception {
+        return GSON.fromJson(msg, clazz);
+    }
+}
+
+Initialization:
+# jamie at eduD692.kent.ac.uk in ~ [12:08:52]
+$ telnet localhost 9000
+Trying ::1...
+Connected to localhost.
+Escape character is '^]'.
+{"firstName":"Jamie", "lastName":"Perkins"}
+
+Output:
+                 Your name is Jamie Perkins!
+    
